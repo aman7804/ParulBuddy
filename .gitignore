@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files
+.env
+.env.*
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+
+# Visual Studio Code
+.vscode/
+
+# Visual Studio (.NET)
+.vs/
+bin/
+obj/
