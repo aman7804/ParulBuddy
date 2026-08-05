@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import "./App.css";
+import FeedbackForm from "./components/FeedbackForm";
 
 const API_URL = "http://localhost:5000/api/chat";
 
@@ -12,6 +13,7 @@ export default function ChatPage() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -41,7 +43,10 @@ export default function ChatPage() {
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { role: "bot", text: "Couldn't reach the server. Is the backend running?" },
+        {
+          role: "bot",
+          text: "Couldn't reach the server. Is the backend running?",
+        },
       ]);
     } finally {
       setLoading(false);
@@ -58,9 +63,41 @@ export default function ChatPage() {
   return (
     <div className="app">
       <header className="header">
-        <div className="header-title">Parul Helpdesk</div>
-        <div className="header-sub">AI assistant · Hostel, Exams, Placement</div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <div className="header-title">Parul Helpdesk</div>
+            <div className="header-sub">
+              AI assistant · Hostel, Exams, Placement
+            </div>
+          </div>
+          <button
+            onClick={() => setShowFeedback((v) => !v)}
+            style={{
+              background: "transparent",
+              border: "1px solid rgba(255,255,255,0.4)",
+              color: "#fff",
+              borderRadius: 6,
+              padding: "4px 10px",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            {showFeedback ? "Close" : "Feedback"}
+          </button>
+        </div>
       </header>
+
+      {showFeedback && (
+        <div style={{ borderBottom: "1px solid #e5e5e5" }}>
+          <FeedbackForm onSent={() => setShowFeedback(false)} />
+        </div>
+      )}
 
       <div className="chat-window">
         {messages.map((m, i) => (
@@ -68,7 +105,9 @@ export default function ChatPage() {
             <div className={`bubble ${m.role}`}>
               {m.text}
               {m.matched && m.matched.length > 0 && (
-                <div className="matched-tag">source: {m.matched.join(", ")}</div>
+                <div className="matched-tag">
+                  source: {m.matched.join(", ")}
+                </div>
               )}
             </div>
           </div>

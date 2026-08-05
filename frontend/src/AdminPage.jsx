@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import AdminLogin from "./AdminLogin";
-import AdminDashboard from "./AdminDashboard";
-import UnansweredQuestions from "./UnansweredQuestions";
+import AdminLogin from "./components/AdminLogin";
+import AdminDashboard from "./components/AdminDashboard";
+import UnansweredQuestions from "./components/UnansweredQuestions";
+import AggregateQuestions from "./components/AggregateQuestions";
 
 export default function AdminPage() {
   const [token, setToken] = useState(null);
@@ -31,6 +32,12 @@ export default function AdminPage() {
         >
           Unanswered Questions
         </button>
+        <button
+          onClick={() => setTab("aggregate")}
+          disabled={tab === "aggregate"}
+        >
+          Aggregate Questions
+        </button>
         <button onClick={handleLogout} style={{ marginLeft: "auto" }}>
           Logout
         </button>
@@ -39,6 +46,9 @@ export default function AdminPage() {
       {tab === "kb" && <AdminDashboard token={token} onLogout={handleLogout} />}
       {tab === "unanswered" && (
         <UnansweredQuestions token={token} onLogout={handleLogout} />
+      )}
+      {tab === "aggregate" && (
+        <AggregateQuestions token={token} onLogout={handleLogout} />
       )}
     </div>
   );

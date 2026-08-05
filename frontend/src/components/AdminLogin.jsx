@@ -23,7 +23,6 @@ export default function AdminLogin({ onLogin }) {
       localStorage.setItem("adminToken", data.token);
       onLogin(data.token);
     } catch (err) {
-      console.log(err);
       setError("Something went wrong");
     }
   };

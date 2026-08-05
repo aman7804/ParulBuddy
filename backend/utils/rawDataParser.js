@@ -177,14 +177,11 @@ async function parseStructuredDoc(
   // self-contained user message. temperature 0 because this is a parsing
   // task, not a creative one: we want the same input to produce the same
   // split every time.
-  console.log("Hellow1");
   const raw = await callGroq(null, prompt, 3000, 0);
-  console.log(raw);
 
   let parsed;
 
   const cleaned = stripCodeFences(raw);
-  console.log(cleaned);
   try {
     parsed = JSON.parse(cleaned);
   } catch (err) {

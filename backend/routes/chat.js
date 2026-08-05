@@ -16,9 +16,13 @@ router.post("/", async (req, res) => {
     // separately before falling back to normal single-entry retrieval.
     const aggregate = await tryAggregateAnswer(question);
     if (aggregate) {
+      const matchedSource =
+        aggregate.source === "aggregate_subcategory"
+          ? `${aggregate.category} > Aggregate`
+          : `${aggregate.category} > (all entries)`;
       return res.json({
         answer: aggregate.answer,
-        matched: [`${aggregate.category} > (all entries)`],
+        matched: [matchedSource],
       });
     }
 

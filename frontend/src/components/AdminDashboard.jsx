@@ -1,22 +1,8 @@
 import { useEffect, useState } from "react";
 
-const RAW_TEMPLATE_PLACEHOLDER = `Boys Hostel A
-Fee: ₹45,000/year
-Rooms: 2/3 sharing
-Mess: Included, veg only
-Curfew: 10 PM
----
-Boys Hostel B
-Fee: ₹38,000/year
-Rooms: 4 sharing
-Mess: Included, veg + non-veg
-Curfew: 11 PM
----
-Boys Hostel C
-Fee: ₹42,000/year
-...`;
+const RAW_TEMPLATE_PLACEHOLDER = `paste raw text here...`;
 
-export default function AdminDashboard({ token, onLogout }) {
+export default function AdminDashboard({ token }) {
   const [entries, setEntries] = useState([]);
   const [form, setForm] = useState({
     category: "",
@@ -43,7 +29,6 @@ export default function AdminDashboard({ token, onLogout }) {
       headers: authHeaders,
     });
     if (res.status === 401 || res.status === 403) {
-      onLogout();
       return;
     }
     const data = await res.json();
@@ -152,7 +137,6 @@ export default function AdminDashboard({ token, onLogout }) {
     <div style={{ maxWidth: 800, margin: "40px auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <h2>Knowledge Base Admin</h2>
-        <button onClick={onLogout}>Logout</button>
       </div>
 
       {/* ---- Bulk structured data import ---- */}
@@ -262,6 +246,7 @@ export default function AdminDashboard({ token, onLogout }) {
           placeholder="Content (the actual answer text)"
           value={form.content}
           onChange={(e) => setForm({ ...form, content: e.target.value })}
+          rows={7}
           style={{
             display: "block",
             width: "100%",

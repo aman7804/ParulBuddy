@@ -7,6 +7,7 @@ const UnansweredQuestion = require("../models/UnansweredQuestion");
 const { getEmbedding } = require("../utils/embeddings");
 const { parseRawTextForCategory } = require("../utils/rawDataParser");
 const { mergeContent } = require("../utils/groqClient"); // add this import
+const AggregateQuestion = require("../models/AggregateQuestion");
 
 // ---- LOGIN (public) ----
 router.post("/login", (req, res) => {
@@ -192,6 +193,69 @@ router.get("/unanswered", async (req, res) => {
 router.delete("/unanswered/:id", async (req, res) => {
   try {
     const deleted = await UnansweredQuestion.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ error: "Not found" });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete" });
+  }
+});
+
+// ---- GET pending aggregate questions ----
+router.get("/aggregate-questions", async (req, res) => {
+  try {
+    const questions = await AggregateQuestion.find().sort({ updatedAt: -1 });
+    res.json(questions);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch aggregate questions" });
+  }
+});
+
+// ---- PROMOTE: merge into KB's "Aggregate" subcategory for that category, then delete ----
+router.post("/aggregate-questions/:id/promote", async (req, res) => {
+  try {
+    const aq = await AggregateQuestion.findById(req.params.id);
+    if (!aq) return res.status(404).json({ error: "Not found" });
+
+    const entry = await upsertEntry({
+      category: aq.category,
+      subcategory: "Aggregate",
+      content: aq.answer,
+    });
+
+    await AggregateQuestion.findByIdAndDelete(req.params.id);
+    res.json({ success: true, entry });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to promote aggregate question" });
+  }
+});
+
+// ---- DISMISS: discard without adding to KB ----
+router.delete("/aggregate-questions/:id", async (req, res) => {
+  try {
+    const deleted = await AggregateQuestion.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ error: "Not found" });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete" });
+  }
+}); 
+
+
+const Feedback = require("../models/Feedback");
+
+router.get("/feedback", async (req, res) => {
+  try {
+    const feedback = await Feedback.find().sort({ createdAt: -1 });
+    res.json(feedback);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch feedback" });
+  }
+});
+
+router.delete("/feedback/:id", async (req, res) => {
+  try {
+    const deleted = await Feedback.findByIdAndDelete(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Not found" });
     res.json({ success: true });
   } catch (err) {

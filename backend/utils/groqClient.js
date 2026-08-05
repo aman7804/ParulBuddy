@@ -26,7 +26,6 @@ async function callGroq(
     messages.push({ role: "system", content: systemPrompt });
   }
   messages.push({ role: "user", content: userContent });
-  console.log(process.env.GROQ_MODEL);
   const response = await fetch(
     "https://api.groq.com/openai/v1/chat/completions",
     {
