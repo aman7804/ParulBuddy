@@ -1,145 +1,89 @@
 import { useEffect, useState } from "react";
 
-const RAW_TEMPLATE_PLACEHOLDER = `paste raw text here...`;
-
 export default function AdminDashboard({ token }) {
-  const [entries, setEntries] = useState([]);
-  const [form, setForm] = useState({
-    category: "",
-    subcategory: "",
-    content: "",
-  });
-  const [editingId, setEditingId] = useState(null);
-  const [error, setError] = useState("");
-
-  // ---- Bulk raw dump state ----
-  const [rawText, setRawText] = useState("");
-  const [rawCategory, setRawCategory] = useState("");
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkResult, setBulkResult] = useState(null);
-  const [bulkError, setBulkError] = useState("");
+  const [documents, setDocuments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const [uploadError, setUploadError] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const authHeaders = {
-    "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
   };
 
-  const fetchEntries = async () => {
-    const res = await fetch("http://localhost:5000/api/admin/entries", {
+  const fetchDocuments = async () => {
+    const res = await fetch("http://localhost:5000/api/admin/documents", {
       headers: authHeaders,
     });
-    if (res.status === 401 || res.status === 403) {
-      return;
-    }
+    if (res.status === 401 || res.status === 403) return;
     const data = await res.json();
-    setEntries(data);
+    setDocuments(data);
   };
 
   useEffect(() => {
-    fetchEntries();
+    fetchDocuments();
   }, []);
 
-  const resetForm = () => {
-    setForm({ category: "", subcategory: "", content: "" });
-    setEditingId(null);
-  };
-
-  const handleSubmit = async (e) => {
+  const handleUpload = async (e) => {
     e.preventDefault();
-    setError("");
+    setUploadError("");
+    setUploadResult(null);
 
-    const url = editingId
-      ? `http://localhost:5000/api/admin/entries/${editingId}`
-      : "http://localhost:5000/api/admin/entries";
-    const method = editingId ? "PUT" : "POST";
-
-    const res = await fetch(url, {
-      method,
-      headers: authHeaders,
-      body: JSON.stringify(form),
-    });
-
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || "Failed to save");
+    if (!selectedFile) {
+      setUploadError("Select a PDF file first.");
       return;
     }
 
-    resetForm();
-    fetchEntries();
-  };
-
-  const handleEdit = (entry) => {
-    setForm({
-      category: entry.category,
-      subcategory: entry.subcategory,
-      content: entry.content,
-    });
-    setEditingId(entry._id);
-  };
-
-  const handleDelete = async (id) => {
-    if (!confirm("Delete this entry?")) return;
-    await fetch(`http://localhost:5000/api/admin/entries/${id}`, {
-      method: "DELETE",
-      headers: authHeaders,
-    });
-    fetchEntries();
-  };
-
-  const handleBulkSubmit = async (e) => {
-    e.preventDefault();
-    setBulkError("");
-    setBulkResult(null);
-
-    if (!rawCategory.trim()) {
-      setBulkError("Category is required.");
-      return;
-    }
-    if (!rawText.trim()) {
-      setBulkError("Paste some data first.");
-      return;
-    }
-
-    setBulkLoading(true);
+    setUploading(true);
     try {
-      const res = await fetch(
-        "http://localhost:5000/api/admin/entries/bulk-raw",
-        {
-          method: "POST",
-          headers: authHeaders,
-          body: JSON.stringify({
-            rawText,
-            category: rawCategory.trim().toLocaleLowerCase(),
-          }),
-        },
-      );
+      const formData = new FormData();
+      formData.append("pdf", selectedFile);
+
+      const res = await fetch("http://localhost:5000/api/admin/upload-pdf", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setBulkError(data.error || "Failed to process raw data");
+        setUploadError(data.error || "Failed to upload PDF");
         return;
       }
 
-      setBulkResult(data);
-      setRawText("");
-      setRawCategory("");
-      fetchEntries();
+      setUploadResult(data);
+      setSelectedFile(null);
+
+      // Clear file input
+      const fileInput = document.getElementById("pdf-file-input");
+      if (fileInput) fileInput.value = "";
+
+      fetchDocuments();
     } catch (err) {
-      setBulkError(err.message || "Something went wrong");
+      setUploadError(err.message || "Something went wrong");
     } finally {
-      setBulkLoading(false);
+      setUploading(false);
     }
+  };
+
+  const handleDelete = async (name) => {
+    if (!confirm(`Delete "${name}" and all its chunks?`)) return;
+    await fetch(
+      `http://localhost:5000/api/admin/documents/${encodeURIComponent(name)}`,
+      {
+        method: "DELETE",
+        headers: authHeaders,
+      },
+    );
+    fetchDocuments();
   };
 
   return (
     <div style={{ maxWidth: 800, margin: "40px auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <h2>Knowledge Base Admin</h2>
-      </div>
+      <h2>Document Management</h2>
 
-      {/* ---- Bulk structured data import ---- */}
+      {/* ---- PDF Upload ---- */}
       <div
         style={{
           border: "1px solid #ccc",
@@ -148,48 +92,31 @@ export default function AdminDashboard({ token }) {
           marginBottom: 30,
         }}
       >
-        <h3 style={{ marginTop: 0 }}>Bulk Import from Structured Data</h3>
+        <h3 style={{ marginTop: 0 }}>Upload PDF</h3>
         <p style={{ fontSize: 13, color: "#555" }}>
-          One category per import. Below, each item's first line is its name,
-          the rest is its content. Separate items with a line containing only{" "}
-          <code>---</code>. No AI processing happens here - it's parsed
-          directly, so check the format matches before submitting.
+          Upload a PDF document. Its text will be extracted, chunked, and
+          embedded for retrieval. Re-uploading a file with the same name
+          replaces the previous version.
         </p>
-        <form onSubmit={handleBulkSubmit}>
+        <form onSubmit={handleUpload}>
           <input
-            placeholder="Category (e.g. Hostel)"
-            value={rawCategory}
-            onChange={(e) => setRawCategory(e.target.value)}
-            style={{
-              display: "block",
-              width: "100%",
-              marginBottom: 8,
-              padding: 6,
-            }}
+            id="pdf-file-input"
+            type="file"
+            accept=".pdf"
+            onChange={(e) => setSelectedFile(e.target.files[0] || null)}
+            style={{ display: "block", marginBottom: 8 }}
           />
-          <textarea
-            placeholder={RAW_TEMPLATE_PLACEHOLDER}
-            value={rawText}
-            onChange={(e) => setRawText(e.target.value)}
-            rows={14}
-            style={{
-              display: "block",
-              width: "100%",
-              marginBottom: 8,
-              padding: 6,
-              fontFamily: "monospace",
-              fontSize: 12,
-            }}
-          />
-          <button type="submit" disabled={bulkLoading}>
-            {bulkLoading ? "Processing..." : "Process & Insert"}
+          <button type="submit" disabled={uploading}>
+            {uploading ? "Processing..." : "Upload & Process"}
           </button>
 
-          {bulkError && (
-            <p style={{ color: "red", whiteSpace: "pre-wrap" }}>{bulkError}</p>
+          {uploadError && (
+            <p style={{ color: "red", whiteSpace: "pre-wrap" }}>
+              {uploadError}
+            </p>
           )}
 
-          {bulkResult && (
+          {uploadResult && (
             <div
               style={{
                 marginTop: 10,
@@ -200,97 +127,49 @@ export default function AdminDashboard({ token }) {
               }}
             >
               <p>
-                Parsed {bulkResult.totalExtracted} entries — saved{" "}
-                {bulkResult.saved}, failed {bulkResult.failed}.
+                <strong>{uploadResult.pdfName}</strong> — {uploadResult.chunksCreated} chunks
+                created
+                {uploadResult.previousChunksDeleted > 0 &&
+                  ` (replaced ${uploadResult.previousChunksDeleted} previous chunks)`}
+                {uploadResult.errors > 0 &&
+                  `, ${uploadResult.errors} failed`}
               </p>
-              {bulkResult.failedDetails?.length > 0 && (
-                <ul>
-                  {bulkResult.failedDetails.map((f, i) => (
-                    <li key={i} style={{ color: "red" }}>
-                      {f.subcategory}: {f.error}
-                    </li>
-                  ))}
-                </ul>
-              )}
             </div>
           )}
         </form>
       </div>
 
-      {/* ---- Single entry form (quick add/edit) ---- */}
-      <form onSubmit={handleSubmit} style={{ marginBottom: 30 }}>
-        <h3>{editingId ? "Edit Entry" : "Add Single Entry"}</h3>
-        <input
-          placeholder="Category (e.g. Hostel)"
-          value={form.category}
-          onChange={(e) => setForm({ ...form, category: e.target.value })}
-          style={{
-            display: "block",
-            width: "100%",
-            marginBottom: 8,
-            padding: 6,
-          }}
-        />
-        <input
-          placeholder="Subcategory (e.g. Hostel Fee)"
-          value={form.subcategory}
-          onChange={(e) => setForm({ ...form, subcategory: e.target.value })}
-          style={{
-            display: "block",
-            width: "100%",
-            marginBottom: 8,
-            padding: 6,
-          }}
-        />
-        <textarea
-          placeholder="Content (the actual answer text)"
-          value={form.content}
-          onChange={(e) => setForm({ ...form, content: e.target.value })}
-          rows={7}
-          style={{
-            display: "block",
-            width: "100%",
-            marginBottom: 8,
-            padding: 6,
-          }}
-        />
-        <button type="submit">
-          {editingId ? "Update Entry" : "Add Entry"}
-        </button>
-        {editingId && (
-          <button type="button" onClick={resetForm} style={{ marginLeft: 8 }}>
-            Cancel
-          </button>
-        )}
-        {error && <p style={{ color: "red" }}>{error}</p>}
-      </form>
-
-      <table
-        width="100%"
-        border="1"
-        cellPadding="6"
-        style={{ borderCollapse: "collapse" }}
-      >
-        <thead>
-          <tr>
-            <th>Category</th>
-            <th>Subcategory</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((entry) => (
-            <tr key={entry._id}>
-              <td>{entry.category}</td>
-              <td>{entry.subcategory}</td>
-              <td>
-                <button onClick={() => handleEdit(entry)}>Edit</button>
-                <button onClick={() => handleDelete(entry._id)}>Delete</button>
-              </td>
+      {/* ---- Uploaded Documents ---- */}
+      <h3>Uploaded Documents</h3>
+      {documents.length === 0 ? (
+        <p style={{ color: "#888" }}>No documents uploaded yet.</p>
+      ) : (
+        <table
+          width="100%"
+          border="1"
+          cellPadding="6"
+          style={{ borderCollapse: "collapse" }}
+        >
+          <thead>
+            <tr>
+              <th>Document</th>
+              <th>Chunks</th>
+              <th>Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {documents.map((doc) => (
+              <tr key={doc.name}>
+                <td>{doc.name}</td>
+                <td>{doc.chunks}</td>
+                <td>
+                  <button onClick={() => handleDelete(doc.name)}>Delete</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

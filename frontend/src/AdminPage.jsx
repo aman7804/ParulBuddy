@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import AdminLogin from "./components/AdminLogin";
 import AdminDashboard from "./components/AdminDashboard";
 import UnansweredQuestions from "./components/UnansweredQuestions";
-import AggregateQuestions from "./components/AggregateQuestions";
+
+import FeedbackAdmin from "./components/FeedbackAdmin";
 
 export default function AdminPage() {
   const [token, setToken] = useState(null);
@@ -22,9 +23,9 @@ export default function AdminPage() {
 
   return (
     <div style={{ maxWidth: 800, margin: "40px auto" }}>
-      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
         <button onClick={() => setTab("kb")} disabled={tab === "kb"}>
-          Knowledge Base
+          Documents
         </button>
         <button
           onClick={() => setTab("unanswered")}
@@ -32,11 +33,12 @@ export default function AdminPage() {
         >
           Unanswered Questions
         </button>
+
         <button
-          onClick={() => setTab("aggregate")}
-          disabled={tab === "aggregate"}
+          onClick={() => setTab("feedbacks")}
+          disabled={tab === "feedbacks"}
         >
-          Aggregate Questions
+          Feedbacks
         </button>
         <button onClick={handleLogout} style={{ marginLeft: "auto" }}>
           Logout
@@ -47,9 +49,11 @@ export default function AdminPage() {
       {tab === "unanswered" && (
         <UnansweredQuestions token={token} onLogout={handleLogout} />
       )}
-      {tab === "aggregate" && (
-        <AggregateQuestions token={token} onLogout={handleLogout} />
+
+      {tab === "feedbacks" && (
+        <FeedbackAdmin token={token} onLogout={handleLogout} />
       )}
     </div>
   );
 }
+

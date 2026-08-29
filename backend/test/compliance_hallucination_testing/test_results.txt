@@ -1,0 +1,21 @@
+test run 1:
+
+=== QUESTION ===
+Name all four persona-driven criteria from Table 1 where a low-motivation student's concern is about scheduling or workload flexibility, not difficulty.
+--- ANSWER ---
+Schedule Convenience, Effort Required, Extracurricular Balance, Flexible Learning Options
+
+=== QUESTION ===
+List all five persona-driven criteria from Table 1 where a low-motivation student's concern is explicitly about grading, attendance, or friend/peer behavior — not workload or scheduling.
+--- ANSWER ---
+There are 3 criteria that match:
+
+1. **Professor's Leniency** – concern about easy grading and lenient attendance policies.  
+2. **Peer Influence** – concern about friends’ recommendations and course popularity.  
+3. **Flexible Learning Options** – concern about relaxed attendance (online or flexible attendance).
+
+=== QUESTION ===
+Give me the three criteria where a low-motivation student avoids intellectual/analytical challenge.
+--- ANSWER ---
+Ease of Completion, Effort Required, and Difficult Subjects.
+

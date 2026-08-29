@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { findRelevantEntries, tryAggregateAnswer } = require("../utils/matcher");
+const { findRelevantChunks } = require("../utils/matcher");
 const { generateAnswer } = require("../utils/aiService");
 
 router.post("/", async (req, res) => {
@@ -11,27 +11,16 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Question is required" });
     }
 
-    // Aggregate questions (cheapest/compare/total/list-all) need to reason across
-    // ALL entries in a category, not just the top semantic match - handle those
-    // separately before falling back to normal single-entry retrieval.
-    const aggregate = await tryAggregateAnswer(question);
-    if (aggregate) {
-      const matchedSource =
-        aggregate.source === "aggregate_subcategory"
-          ? `${aggregate.category} > Aggregate`
-          : `${aggregate.category} > (all entries)`;
-      return res.json({
-        answer: aggregate.answer,
-        matched: [matchedSource],
-      });
-    }
-
-    const matchedEntries = await findRelevantEntries(question);
-    const answer = await generateAnswer(question, matchedEntries);
+    const chunks = await findRelevantChunks(question);
+    const answer = await generateAnswer(question, chunks);
 
     res.json({
       answer,
-      matched: matchedEntries.map((e) => `${e.category} > ${e.subcategory}`),
+      matched: chunks.map((c) =>
+        c.sourcePdf
+          ? `${c.sourcePdf}${c.pageNumber ? ` (p. ${c.pageNumber})` : ""}`
+          : "(chunk)",
+      ),
     });
   } catch (err) {
     console.error(err);

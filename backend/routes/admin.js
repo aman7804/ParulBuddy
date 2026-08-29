@@ -1,13 +1,29 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
 const router = express.Router();
 const { verifyAdmin } = require("../middleware/auth");
-const KnowledgeEntry = require("../models/KnowledgeEntry");
 const UnansweredQuestion = require("../models/UnansweredQuestion");
+const Chunk = require("../models/Chunk");
 const { getEmbedding } = require("../utils/embeddings");
-const { parseRawTextForCategory } = require("../utils/rawDataParser");
-const { mergeContent } = require("../utils/groqClient"); // add this import
-const AggregateQuestion = require("../models/AggregateQuestion");
+const { processPdf } = require("../utils/pdfIngester");
+
+// Multer: store uploaded PDFs in memory (they get processed and discarded)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB max
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === "application/pdf") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF files are accepted"), false);
+    }
+  },
+});
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // ---- LOGIN (public) ----
 router.post("/login", (req, res) => {
@@ -27,155 +43,89 @@ router.post("/login", (req, res) => {
 // Everything below this line requires a valid admin token
 router.use(verifyAdmin);
 
-// ---- GET all entries ----
-router.get("/entries", async (req, res) => {
+// ---- UPLOAD PDF: extract text, chunk, embed, store ----
+router.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
   try {
-    const entries = await KnowledgeEntry.find().sort({ category: 1 });
-    res.json(entries);
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch entries" });
-  }
-});
-
-// ---- CREATE entry ----
-router.post("/entries", async (req, res) => {
-  try {
-    const { category, subcategory, content } = req.body;
-
-    if (!category || !subcategory || !content) {
-      return res.status(400).json({ error: "Missing required fields" });
+    if (!req.file) {
+      return res.status(400).json({ error: "No PDF file uploaded" });
     }
 
-    const embedding = await getEmbedding(`${subcategory}. ${content}`);
+    const pdfName = req.file.originalname;
 
-    const entry = new KnowledgeEntry({
-      category,
-      subcategory,
-      content,
-      embedding,
-    });
+    // Delete existing chunks for this PDF (re-upload = replace)
+    const deleted = await Chunk.deleteMany({ sourcePdf: pdfName });
 
-    await entry.save();
-    res.status(201).json(entry);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to create entry" });
-  }
-});
+    // Process PDF: extract text → clean → chunk
+    const chunks = await processPdf(req.file.buffer);
 
-// ---- UPDATE entry ----
-router.put("/entries/:id", async (req, res) => {
-  try {
-    const { category, subcategory, content } = req.body;
-    const embedding = await getEmbedding(`${subcategory}. ${content}`);
-
-    const updated = await KnowledgeEntry.findByIdAndUpdate(
-      req.params.id,
-      { category, subcategory, content, embedding },
-      { new: true, runValidators: true },
-    );
-
-    if (!updated) return res.status(404).json({ error: "Entry not found" });
-    res.json(updated);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to update entry" });
-  }
-});
-
-// ---- DELETE entry ----
-router.delete("/entries/:id", async (req, res) => {
-  try {
-    const deleted = await KnowledgeEntry.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ error: "Entry not found" });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to delete entry" });
-  }
-});
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function upsertEntry(item) {
-  const existing = await KnowledgeEntry.findOne({
-    category: item.category,
-    subcategory: item.subcategory,
-  });
-
-  let finalContent = item.content;
-
-  if (existing) {
-    finalContent = await mergeContent(existing.content, item.content);
-  }
-
-  const embedding = await getEmbedding(`${item.subcategory}. ${finalContent}`);
-
-  const entry = await KnowledgeEntry.findOneAndUpdate(
-    { category: item.category, subcategory: item.subcategory },
-    {
-      $set: {
-        category: item.category,
-        subcategory: item.subcategory,
-        content: finalContent,
-        embedding,
-      },
-    },
-    { upsert: true, new: true, runValidators: true },
-  );
-  return entry;
-}
-
-// ---- BULK CREATE/UPDATE from structured raw data dump ----
-// No Groq calls here anymore - rawText must follow the template documented in
-// utils/rawDataParser.js (### Category / ### Subcategory blocks separated by ---).
-// Aggregate answers (cheapest/compare/list-all) are handled live at query time,
-// not pre-generated here.
-router.post("/entries/bulk-raw", async (req, res) => {
-  try {
-    const { rawText, category } = req.body;
-
-    if (!rawText || !rawText.trim()) {
-      return res.status(400).json({ error: "rawText is required" });
-    }
-    if (!category || !category.trim()) {
-      return res.status(400).json({ error: "category is required" });
+    if (chunks.length === 0) {
+      return res
+        .status(422)
+        .json({ error: "No text could be extracted from this PDF" });
     }
 
-    let items;
-    try {
-      items = await parseRawTextForCategory(rawText, category);
-    } catch (err) {
-      return res.status(422).json({ error: err.message });
-    }
+    // Embed and store each chunk
+    let created = 0;
+    let errors = 0;
 
-    // Upsert each entry: existing (category, subcategory) -> update in place, new -> insert
-    const saved = [];
-    const failed = [];
-
-    for (const item of items) {
+    for (const chunk of chunks) {
       try {
-        const entry = await upsertEntry(item);
-        saved.push(entry);
+        const embedding = await getEmbedding(chunk.text);
+        await Chunk.create({
+          text: chunk.text,
+          embedding,
+          sourcePdf: pdfName,
+          pageNumber: chunk.pageNumber,
+        });
+        created++;
       } catch (err) {
-        failed.push({ subcategory: item.subcategory, error: err.message });
+        console.error(`Chunk embed error: ${err.message}`);
+        errors++;
       }
-      await sleep(300); // avoid hammering the embedding API
+      await sleep(300); // avoid rate limits on embedding API
     }
 
     res.status(201).json({
-      totalExtracted: items.length,
-      saved: saved.length,
-      failed: failed.length,
-      failedDetails: failed,
-      entries: saved,
+      pdfName,
+      previousChunksDeleted: deleted.deletedCount,
+      chunksCreated: created,
+      errors,
     });
   } catch (err) {
     console.error(err);
-    res
-      .status(500)
-      .json({ error: err.message || "Failed to process raw data" });
+    res.status(500).json({ error: err.message || "Failed to process PDF" });
+  }
+});
+
+// ---- GET uploaded documents (grouped by sourcePdf) ----
+router.get("/documents", async (req, res) => {
+  try {
+    const docs = await Chunk.aggregate([
+      { $group: { _id: "$sourcePdf", chunks: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+    ]);
+
+    res.json(
+      docs.map((d) => ({
+        name: d._id,
+        chunks: d.chunks,
+      })),
+    );
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch documents" });
+  }
+});
+
+// ---- DELETE a document (all chunks for a given PDF) ----
+router.delete("/documents/:name", async (req, res) => {
+  try {
+    const result = await Chunk.deleteMany({ sourcePdf: req.params.name });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+    res.json({ success: true, chunksDeleted: result.deletedCount });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete document" });
   }
 });
 
@@ -189,7 +139,7 @@ router.get("/unanswered", async (req, res) => {
   }
 });
 
-// ---- DELETE unanswered question (dismiss, e.g. after adding to KB) ----
+// ---- DELETE unanswered question ----
 router.delete("/unanswered/:id", async (req, res) => {
   try {
     const deleted = await UnansweredQuestion.findByIdAndDelete(req.params.id);
@@ -199,48 +149,6 @@ router.delete("/unanswered/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to delete" });
   }
 });
-
-// ---- GET pending aggregate questions ----
-router.get("/aggregate-questions", async (req, res) => {
-  try {
-    const questions = await AggregateQuestion.find().sort({ updatedAt: -1 });
-    res.json(questions);
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch aggregate questions" });
-  }
-});
-
-// ---- PROMOTE: merge into KB's "Aggregate" subcategory for that category, then delete ----
-router.post("/aggregate-questions/:id/promote", async (req, res) => {
-  try {
-    const aq = await AggregateQuestion.findById(req.params.id);
-    if (!aq) return res.status(404).json({ error: "Not found" });
-
-    const entry = await upsertEntry({
-      category: aq.category,
-      subcategory: "Aggregate",
-      content: aq.answer,
-    });
-
-    await AggregateQuestion.findByIdAndDelete(req.params.id);
-    res.json({ success: true, entry });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to promote aggregate question" });
-  }
-});
-
-// ---- DISMISS: discard without adding to KB ----
-router.delete("/aggregate-questions/:id", async (req, res) => {
-  try {
-    const deleted = await AggregateQuestion.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ error: "Not found" });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to delete" });
-  }
-}); 
-
 
 const Feedback = require("../models/Feedback");
 
