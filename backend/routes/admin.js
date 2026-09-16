@@ -3,15 +3,13 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const router = express.Router();
 const { verifyAdmin } = require("../middleware/auth");
-const UnansweredQuestion = require("../models/UnansweredQuestion");
-const Chunk = require("../models/Chunk");
+const supabase = require("../utils/supabaseClient");
 const { getEmbedding } = require("../utils/embeddings");
 const { processPdf } = require("../utils/pdfIngester");
 
-// Multer: store uploaded PDFs in memory (they get processed and discarded)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB max
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype === "application/pdf") {
       cb(null, true);
@@ -28,66 +26,60 @@ function sleep(ms) {
 // ---- LOGIN (public) ----
 router.post("/login", (req, res) => {
   const { password } = req.body;
-
   if (!password || password !== process.env.ADMIN_PASSWORD) {
     return res.status(401).json({ error: "Wrong password" });
   }
-
   const token = jwt.sign({ role: "admin" }, process.env.JWT_SECRET, {
     expiresIn: "2h",
   });
-
   res.json({ token });
 });
 
-// Everything below this line requires a valid admin token
 router.use(verifyAdmin);
 
-// ---- UPLOAD PDF: extract text, chunk, embed, store ----
+// ---- UPLOAD PDF ----
 router.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
   try {
-    if (!req.file) {
+    if (!req.file)
       return res.status(400).json({ error: "No PDF file uploaded" });
-    }
 
     const pdfName = req.file.originalname;
 
-    // Delete existing chunks for this PDF (re-upload = replace)
-    const deleted = await Chunk.deleteMany({ sourcePdf: pdfName });
+    const { count } = await supabase
+      .from("chunks")
+      .delete({ count: "exact" })
+      .eq("source_pdf", pdfName);
 
-    // Process PDF: extract text → clean → chunk
     const chunks = await processPdf(req.file.buffer);
-
     if (chunks.length === 0) {
       return res
         .status(422)
         .json({ error: "No text could be extracted from this PDF" });
     }
 
-    // Embed and store each chunk
-    let created = 0;
-    let errors = 0;
-
+    let created = 0,
+      errors = 0;
     for (const chunk of chunks) {
       try {
         const embedding = await getEmbedding(chunk.text);
-        await Chunk.create({
+        const { error } = await supabase.from("chunks").insert({
           text: chunk.text,
           embedding,
-          sourcePdf: pdfName,
-          pageNumber: chunk.pageNumber,
+          source_pdf: pdfName,
+          page_number: chunk.pageNumber,
         });
+        if (error) throw error;
         created++;
       } catch (err) {
         console.error(`Chunk embed error: ${err.message}`);
         errors++;
       }
-      await sleep(300); // avoid rate limits on embedding API
+      await sleep(300);
     }
 
     res.status(201).json({
       pdfName,
-      previousChunksDeleted: deleted.deletedCount,
+      previousChunksDeleted: count || 0,
       chunksCreated: created,
       errors,
     });
@@ -97,78 +89,70 @@ router.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
   }
 });
 
-// ---- GET uploaded documents (grouped by sourcePdf) ----
+// ---- GET documents ----
 router.get("/documents", async (req, res) => {
-  try {
-    const docs = await Chunk.aggregate([
-      { $group: { _id: "$sourcePdf", chunks: { $sum: 1 } } },
-      { $sort: { _id: 1 } },
-    ]);
+  const { data, error } = await supabase.from("chunks").select("source_pdf");
+  if (error)
+    return res.status(500).json({ error: "Failed to fetch documents" });
 
-    res.json(
-      docs.map((d) => ({
-        name: d._id,
-        chunks: d.chunks,
-      })),
-    );
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch documents" });
-  }
+  const counts = {};
+  data.forEach((d) => {
+    counts[d.source_pdf] = (counts[d.source_pdf] || 0) + 1;
+  });
+  res.json(Object.entries(counts).map(([name, chunks]) => ({ name, chunks })));
 });
 
-// ---- DELETE a document (all chunks for a given PDF) ----
+// ---- DELETE document ----
 router.delete("/documents/:name", async (req, res) => {
-  try {
-    const result = await Chunk.deleteMany({ sourcePdf: req.params.name });
-    if (result.deletedCount === 0) {
-      return res.status(404).json({ error: "Document not found" });
-    }
-    res.json({ success: true, chunksDeleted: result.deletedCount });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to delete document" });
-  }
+  const { error, count } = await supabase
+    .from("chunks")
+    .delete({ count: "exact" })
+    .eq("source_pdf", req.params.name);
+
+  if (error || !count)
+    return res.status(404).json({ error: "Document not found" });
+  res.json({ success: true, chunksDeleted: count });
 });
 
-// ---- GET unanswered questions ----
+// ---- unanswered questions ----
 router.get("/unanswered", async (req, res) => {
-  try {
-    const questions = await UnansweredQuestion.find().sort({ updatedAt: -1 });
-    res.json(questions);
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch unanswered questions" });
-  }
+  const { data, error } = await supabase
+    .from("unanswered_questions")
+    .select("*")
+    .order("updated_at", { ascending: false });
+  if (error)
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch unanswered questions" });
+  res.json(data);
 });
 
-// ---- DELETE unanswered question ----
 router.delete("/unanswered/:id", async (req, res) => {
-  try {
-    const deleted = await UnansweredQuestion.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ error: "Not found" });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to delete" });
-  }
+  const { error, count } = await supabase
+    .from("unanswered_questions")
+    .delete({ count: "exact" })
+    .eq("id", req.params.id);
+  if (error || !count) return res.status(404).json({ error: "Not found" });
+  res.json({ success: true });
 });
 
-const Feedback = require("../models/Feedback");
-
+// ---- feedback ----
 router.get("/feedback", async (req, res) => {
-  try {
-    const feedback = await Feedback.find().sort({ createdAt: -1 });
-    res.json(feedback);
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch feedback" });
-  }
+  const { data, error } = await supabase
+    .from("feedback")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) return res.status(500).json({ error: "Failed to fetch feedback" });
+  res.json(data);
 });
 
 router.delete("/feedback/:id", async (req, res) => {
-  try {
-    const deleted = await Feedback.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ error: "Not found" });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to delete" });
-  }
+  const { error, count } = await supabase
+    .from("feedback")
+    .delete({ count: "exact" })
+    .eq("id", req.params.id);
+  if (error || !count) return res.status(404).json({ error: "Not found" });
+  res.json({ success: true });
 });
 
 module.exports = router;

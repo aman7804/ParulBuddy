@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import "./App.css";
 import FeedbackForm from "./components/FeedbackForm";
 
@@ -103,7 +104,11 @@ export default function ChatPage() {
         {messages.map((m, i) => (
           <div key={i} className={`bubble-row ${m.role}`}>
             <div className={`bubble ${m.role}`}>
-              {m.text}
+              {m.role === "bot" ? (
+                <ReactMarkdown>{m.text}</ReactMarkdown>
+              ) : (
+                m.text
+              )}
               {m.matched && m.matched.length > 0 && (
                 <div className="matched-tag">
                   source: {m.matched.join(", ")}

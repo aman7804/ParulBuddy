@@ -1,21 +1,30 @@
 // services/aiService.js
 
 const { callGroq } = require("../utils/groqClient");
-const UnansweredQuestion = require("../models/UnansweredQuestion");
+const supabase = require("../utils/supabaseClient");
 
 async function logUnansweredQuestion(question) {
   if (!question || !question.trim()) return;
+  const q = question.trim();
   try {
-    await UnansweredQuestion.findOneAndUpdate(
-      { question: question.trim() },
-      { $inc: { timesAsked: 1 } },
-      { upsert: true, setDefaultsOnInsert: true },
-    );
+    const { data: existing } = await supabase
+      .from("unanswered_questions")
+      .select("id, times_asked")
+      .eq("question", q)
+      .maybeSingle();
+
+    if (existing) {
+      await supabase
+        .from("unanswered_questions")
+        .update({ times_asked: existing.times_asked + 1, updated_at: new Date() })
+        .eq("id", existing.id);
+    } else {
+      await supabase.from("unanswered_questions").insert({ question: q });
+    }
   } catch (err) {
     console.error("Failed to log unanswered question:", err.message);
   }
 }
-
 async function generateAnswer(question, chunks) {
   const defaultFallback =
     "I'm sorry, I don't have the details on that right now. I've noted down your question so our helpdesk team can update the information!";
@@ -27,7 +36,7 @@ async function generateAnswer(question, chunks) {
   console.log(chunks);
   const contextText = chunks.map((c) => c.text).join("\n\n");
   const systemPrompt =
-    "You are a helpdesk assistant for Parul University. Answer the student's question directly, warmly, and concisely using the knowledge below.\n\nCRITICAL RULES:\n1. Speak naturally as the helpdesk assistant. NEVER refer to 'context', 'provided context', 'database', 'given text', 'documents', 'records', or 'prompt' in your response. Answer as if you naturally know the facts.\n2. If the provided knowledge DOES NOT contain enough information to accurately answer the question, your ENTIRE response MUST be EXACTLY: CANNOT_ANSWER\n3. Do NOT output explanations, apologies, or partial guesses if info is missing. ONLY output: CANNOT_ANSWER\n4. If the student's question is in Hinglish (Hindi written in Roman/English script) or mixed Hindi-English, respond in the same Hinglish style. If the question is in plain English, respond in English.\n5. Do not add conclusions, summaries, interpretations, takeaways, or repetitive statements after answering. Stop once the requested information has been provided.\n6. NEVER let the student's stated number, count, or assumption override the actual knowledge. If the student asks for 'all N' items, reasons, or criteria but the knowledge only supports a different number, give ONLY the number actually supported by the knowledge and explicitly say how many you found (e.g. 'There are 3 that match, not 4:'). Do NOT invent, stretch, or reclassify an item just to hit the number the student asked for.\n7. If the student's question contains a false or incorrect premise (wrong count, wrong category, wrong fact, non-existent course/entity), correct the premise briefly and factually before or instead of answering, rather than silently complying with it.\n8. Every question may contain assumptions embedded in its own phrasing — a count, a category label, a comparison, or a fact — that are NOT verified to be true. Never treat the user's phrasing as evidence. Before answering, derive your answer using ONLY the knowledge below, as if the question contained no numbers, categories, or claims at all — just the underlying condition being asked about. Then separately check whether your derived answer agrees with what the question assumed. If it does not agree, state what the knowledge actually supports and note the discrepancy per rule 6/7. Your final answer must always be fully explainable by the knowledge alone — if you cannot point to a specific line in the knowledge justifying why an item is included, it must NOT be included, regardless of what the question implied.";
+    "You are a helpdesk assistant for Parul University. Answer the student's question directly, warmly, and concisely using the knowledge below.\n\nCRITICAL RULES:\n1. Speak naturally as the helpdesk assistant. NEVER refer to 'context', 'provided context', 'database', 'given text', 'documents', 'records', or 'prompt' in your response. Answer as if you naturally know the facts.\n2. If the provided knowledge does not contain the topic being asked about AT ALL, your ENTIRE response MUST be EXACTLY: CANNOT_ANSWER. (This does NOT apply if the topic exists but a detail in the question is wrong — see rule 9, which takes priority.)\n3. Do NOT output explanations, apologies, or partial guesses if info is missing. ONLY output: CANNOT_ANSWER\n4. If the student's question is in Hinglish (Hindi written in Roman/English script) or mixed Hindi-English, respond in the same Hinglish style. If the question is in plain English, respond in English.\n5. Do not add conclusions, summaries, interpretations, takeaways, or repetitive statements after answering. Stop once the requested information has been provided.\n6. NEVER let the student's stated number, count, or assumption override the actual knowledge. If the student asks for 'all N' items, reasons, or criteria but the knowledge only supports a different number, give ONLY the number actually supported by the knowledge and explicitly say how many you found (e.g. 'There are 3 that match, not 4:'). Do NOT invent, stretch, or reclassify an item just to hit the number the student asked for.\n7. If the student's question contains a false or incorrect premise (wrong count, wrong category, wrong fact, non-existent course/entity), correct the premise briefly and factually before or instead of answering, rather than silently complying with it.\n8. Every question may contain assumptions embedded in its own phrasing — a count, a category label, a comparison, or a fact — that are NOT verified to be true. Never treat the user's phrasing as evidence. Before answering, derive your answer using ONLY the knowledge below, as if the question contained no numbers, categories, or claims at all — just the underlying condition being asked about. Then separately check whether your derived answer agrees with what the question assumed. If it does not agree, state what the knowledge actually supports and note the discrepancy per rule 6/7. Your final answer must always be fully explainable by the knowledge alone — if you cannot point to a specific line in the knowledge justifying why an item is included, it must NOT be included, regardless of what the question implied.9. Priority rule: if the topic/entity the question is about DOES exist in the knowledge (even if some detail in the question — a number, name, fact, or category — is wrong), you MUST apply rule 6/7: correct the wrong detail, then answer using what the knowledge actually supports. Do NOT respond CANNOT_ANSWER just because part of the question's premise is incorrect. Only use CANNOT_ANSWER when the topic/entity itself is not covered by the knowledge at all — not when it exists but some detail about it was misstated.";
   try {
     const rawContent = await callGroq(
       systemPrompt,
