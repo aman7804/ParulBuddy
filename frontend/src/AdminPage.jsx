@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import AdminLogin from "./components/AdminLogin";
 import AdminDashboard from "./components/AdminDashboard";
-import UnansweredQuestions from "./components/UnansweredQuestions";
+import UnansweredQuestions from "./components/UnAnsweredQuestions";
 
 import FeedbackAdmin from "./components/FeedbackAdmin";
 
@@ -23,7 +23,9 @@ export default function AdminPage() {
 
   return (
     <div style={{ maxWidth: 800, margin: "40px auto" }}>
-      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+      <div
+        style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}
+      >
         <button onClick={() => setTab("kb")} disabled={tab === "kb"}>
           Documents
         </button>
@@ -56,4 +58,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
