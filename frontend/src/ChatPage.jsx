@@ -3,7 +3,8 @@ import ReactMarkdown from "react-markdown";
 import "./App.css";
 import FeedbackForm from "./components/FeedbackForm";
 
-const API_URL = "http://localhost:5000/api/chat";
+import { API_BASE_URL } from "./config";
+const API_URL = `${API_BASE_URL}/api/chat`;
 
 export default function ChatPage() {
   const [messages, setMessages] = useState([

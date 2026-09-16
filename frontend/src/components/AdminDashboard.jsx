@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { API_BASE_URL } from "../config";
 
 export default function AdminDashboard({ token }) {
   const [documents, setDocuments] = useState([]);
@@ -12,7 +13,7 @@ export default function AdminDashboard({ token }) {
   };
 
   const fetchDocuments = async () => {
-    const res = await fetch("http://localhost:5000/api/admin/documents", {
+    const res = await fetch(`${API_BASE_URL}/api/admin/documents`, {
       headers: authHeaders,
     });
     if (res.status === 401 || res.status === 403) return;
@@ -39,7 +40,7 @@ export default function AdminDashboard({ token }) {
       const formData = new FormData();
       formData.append("pdf", selectedFile);
 
-      const res = await fetch("http://localhost:5000/api/admin/upload-pdf", {
+      const res = await fetch(`${API_BASE_URL}/api/admin/upload-pdf`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -70,7 +71,7 @@ export default function AdminDashboard({ token }) {
   const handleDelete = async (name) => {
     if (!confirm(`Delete "${name}" and all its chunks?`)) return;
     await fetch(
-      `http://localhost:5000/api/admin/documents/${encodeURIComponent(name)}`,
+      `${API_BASE_URL}/api/admin/documents/${encodeURIComponent(name)}`,
       {
         method: "DELETE",
         headers: authHeaders,
@@ -127,12 +128,11 @@ export default function AdminDashboard({ token }) {
               }}
             >
               <p>
-                <strong>{uploadResult.pdfName}</strong> — {uploadResult.chunksCreated} chunks
-                created
+                <strong>{uploadResult.pdfName}</strong> —{" "}
+                {uploadResult.chunksCreated} chunks created
                 {uploadResult.previousChunksDeleted > 0 &&
                   ` (replaced ${uploadResult.previousChunksDeleted} previous chunks)`}
-                {uploadResult.errors > 0 &&
-                  `, ${uploadResult.errors} failed`}
+                {uploadResult.errors > 0 && `, ${uploadResult.errors} failed`}
               </p>
             </div>
           )}

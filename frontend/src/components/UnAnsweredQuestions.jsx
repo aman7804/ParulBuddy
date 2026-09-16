@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { API_BASE_URL } from "../config";
 
 export default function UnansweredQuestions({ token, onLogout }) {
   const [questions, setQuestions] = useState([]);
@@ -9,7 +10,7 @@ export default function UnansweredQuestions({ token, onLogout }) {
   };
 
   const fetchQuestions = async () => {
-    const res = await fetch("http://localhost:5000/api/admin/unanswered", {
+    const res = await fetch(`${API_BASE_URL}/api/admin/unanswered`, {
       headers: authHeaders,
     });
     if (res.status === 401 || res.status === 403) {
@@ -25,7 +26,7 @@ export default function UnansweredQuestions({ token, onLogout }) {
   }, []);
 
   const handleDismiss = async (id) => {
-    await fetch(`http://localhost:5000/api/admin/unanswered/${id}`, {
+    await fetch(`${API_BASE_URL}/api/admin/unanswered/${id}`, {
       method: "DELETE",
       headers: authHeaders,
     });

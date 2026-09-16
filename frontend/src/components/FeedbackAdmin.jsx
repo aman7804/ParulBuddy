@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { API_BASE_URL } from "../config";
 
 export default function FeedbackAdmin({ token, onLogout }) {
   const [items, setItems] = useState([]);
@@ -14,7 +15,7 @@ export default function FeedbackAdmin({ token, onLogout }) {
   const fetchFeedback = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/admin/feedback", {
+      const res = await fetch(`${API_BASE_URL}/api/admin/feedback`, {
         headers: authHeaders,
       });
       if (res.status === 401 || res.status === 403) return onLogout();
@@ -32,10 +33,11 @@ export default function FeedbackAdmin({ token, onLogout }) {
   }, []);
 
   const handleDelete = async (id) => {
-    if (!confirm("Are you sure you want to delete this feedback entry?")) return;
+    if (!confirm("Are you sure you want to delete this feedback entry?"))
+      return;
     setDeletingId(id);
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/feedback/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/feedback/${id}`, {
         method: "DELETE",
         headers: authHeaders,
       });
@@ -136,7 +138,9 @@ export default function FeedbackAdmin({ token, onLogout }) {
             color: "#6b7280",
           }}
         >
-          <p style={{ margin: 0, fontSize: "15px" }}>No feedback submitted yet.</p>
+          <p style={{ margin: 0, fontSize: "15px" }}>
+            No feedback submitted yet.
+          </p>
         </div>
       )}
 
@@ -230,4 +234,4 @@ export default function FeedbackAdmin({ token, onLogout }) {
         ))}
     </div>
   );
-}
+}

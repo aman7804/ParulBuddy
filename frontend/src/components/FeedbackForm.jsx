@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { API_BASE_URL } from "../config";
 
 export default function FeedbackForm() {
   const [message, setMessage] = useState("");
@@ -12,7 +13,7 @@ export default function FeedbackForm() {
 
     setStatus("sending");
     try {
-      const res = await fetch("http://localhost:5000/api/feedback", {
+      const res = await fetch(`${API_BASE_URL}/api/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message, name, email }),
