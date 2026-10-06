@@ -17,4 +17,23 @@ app.use("/api/feedback", feedbackRoutes);
 
 app.get("/", (req, res) => res.send("Helpdesk chatbot API is running"));
 
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+app.use((err, req, res, next) => {
+  console.error(err);
+  if (res.headersSent) return next(err);
+  res.status(err.status || 500).json({
+    error: err.status ? err.message : "Request failed",
+  });
+});
+
+async function start() {
+  app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+}
+
+if (require.main === module) {
+  start().catch((err) => {
+    console.error("Unable to start server:", err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = app;
