@@ -1,11 +1,3 @@
-// utils/groqClient.js
-//
-// Thin Groq call wrapper.
-// Used by aiService.js for answer generation.
-//
-// temperature is a parameter so callers can ask for deterministic output
-// (parsing/classification) vs a little looseness (free-text answers).
-
 async function callGroq(
   systemPrompt,
   userContent,
@@ -13,41 +5,30 @@ async function callGroq(
   temperature = 0.3,
 ) {
   const messages = [];
-  if (systemPrompt && systemPrompt.trim()) {
-    messages.push({ role: "system", content: systemPrompt });
-  }
+  if (systemPrompt?.trim()) messages.push({ role: "system", content: systemPrompt });
   messages.push({ role: "user", content: userContent });
 
-  const response = await fetch(
-    "https://api.groq.com/openai/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: process.env.GROQ_MODEL,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-        // reasoning_format: "hidden",
-      }),
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
     },
-  );
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Groq API error (${response.status}): ${errText}`);
-  }
-
+    body: JSON.stringify({
+      model: process.env.GROQ_MODEL,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+    }),
+  });
+  if (!response.ok) throw new Error(`Groq API error (${response.status})`);
   const data = await response.json();
-
-  if (data.choices[0].finish_reason === "length") {
-    throw new Error("Groq response was cut off (hit max_tokens).");
+  if (data.choices?.[0]?.finish_reason === "length") {
+    throw new Error("Groq response was cut off");
   }
-
-  return data.choices[0].message.content.trim();
+  const content = data.choices?.[0]?.message?.content?.trim();
+  if (!content) throw new Error("Groq returned an empty response");
+  return content;
 }
 
 module.exports = { callGroq };

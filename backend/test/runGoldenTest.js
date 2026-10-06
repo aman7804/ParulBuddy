@@ -21,7 +21,7 @@ async function askQuestion(question) {
     throw new Error(`API error ${res.status}: ${await res.text()}`);
   }
 
-  return res.json(); // { answer, matched }
+  return res.json(); // { answer, sources }
 }
 
 async function main() {
@@ -34,13 +34,12 @@ async function main() {
   let answerPass = 0;
 
   for (const item of goldenSet) {
-    const { answer, matched } = await askQuestion(item.question);
+    const { answer, sources } = await askQuestion(item.question);
 
     // Retrieval check: does "matched" mention the expected page number?
-    const expectedPageStr = item.pageNumber ? `p. ${item.pageNumber}` : null;
-    const retrievalHit = expectedPageStr
-      ? matched.some((m) => m.includes(expectedPageStr))
-      : null; // can't verify without pageNumber in golden set
+    const retrievalHit = item.sourcePdf
+      ? sources.includes(item.sourcePdf)
+      : sources.length > 0;
 
     // Rough answer check — you should eyeball results.json for real accuracy
     const looksCorrect = answer
@@ -54,7 +53,7 @@ async function main() {
       question: item.question,
       expectedAnswer: item.answer,
       aiAnswer: answer,
-      matched,
+      sources,
       retrievalHit,
       looksCorrect,
     });

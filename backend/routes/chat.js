@@ -16,11 +16,7 @@ router.post("/", async (req, res) => {
 
     res.json({
       answer,
-      matched: chunks.map((c) =>
-        c.sourcePdf
-          ? `${c.sourcePdf}${c.pageNumber ? ` (p. ${c.pageNumber})` : ""}`
-          : "(chunk)",
-      ),
+      sources: [...new Set(chunks.map((c) => c.sourcePdf).filter(Boolean))],
     });
   } catch (err) {
     console.error(err);
