@@ -29,20 +29,20 @@ export default function AdminLogin({ onLogin }) {
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      style={{ maxWidth: 300, margin: "80px auto" }}
-    >
-      <h2>Admin Login</h2>
+    <form onSubmit={handleSubmit} className="admin-login">
+      <div className="admin-login-mark">P</div>
+      <p className="admin-eyebrow">PARULBUDDY</p>
+      <h2>Admin sign in</h2>
+      <p className="admin-login-copy">Manage documents, unanswered questions, and feedback.</p>
       <input
         type="password"
         placeholder="Admin password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        style={{ width: "100%", padding: 8, marginBottom: 10 }}
+        className="admin-login-input"
       />
-      <button type="submit" style={{ width: "100%", padding: 8 }}>
-        Login
+      <button type="submit" className="button button-primary admin-login-button">
+        Sign in
       </button>
       {error && <p style={{ color: "red" }}>{error}</p>}
     </form>

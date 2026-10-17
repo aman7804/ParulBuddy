@@ -5,44 +5,33 @@ const SIMILARITY_THRESHOLD = 0.5;
 
 async function logUnansweredQuestion(question) {
   const q = question.trim();
-  const { data: existing } = await supabase
+  const { data: existing, error: findError } = await supabase
     .from("unanswered_questions")
     .select("id, times_asked")
     .eq("question", q)
     .maybeSingle();
+  if (findError) throw findError;
 
-  if (existing) {
-    await supabase
-      .from("unanswered_questions")
-      .update({ times_asked: existing.times_asked + 1, updated_at: new Date() })
-      .eq("id", existing.id);
-  } else {
-    await supabase.from("unanswered_questions").insert({ question: q });
-  }
+  const values = {
+    question: q,
+    times_asked: (existing?.times_asked || 0) + 1,
+    updated_at: new Date().toISOString(),
+  };
+  const result = existing
+    ? await supabase.from("unanswered_questions").update(values).eq("id", existing.id)
+    : await supabase.from("unanswered_questions").insert(values);
+  if (result.error) throw result.error;
 }
 
 async function findRelevantChunks(question, topK = 5) {
-  const questionEmbedding = await getEmbedding(question);
-
+  const query_embedding = await getEmbedding(question);
   const { data, error } = await supabase.rpc("match_chunks", {
-    query_embedding: questionEmbedding,
+    query_embedding,
     match_threshold: SIMILARITY_THRESHOLD,
     match_count: topK,
   });
-
-  if (error) {
-    console.error("match_chunks error:", error.message);
-    return [];
-  }
-
-  if (!data || data.length === 0) {
-    try {
-      await logUnansweredQuestion(question);
-    } catch (err) {
-      console.error("Failed to log unanswered question:", err.message);
-    }
-  }
-
+  if (error) throw error;
+  if (!data?.length) await logUnansweredQuestion(question);
   return data || [];
 }
 

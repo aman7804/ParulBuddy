@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { API_BASE_URL } from "../config";
 
-export default function FeedbackForm() {
+export default function FeedbackForm({ onSent }) {
   const [message, setMessage] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -22,7 +22,7 @@ export default function FeedbackForm() {
       setMessage("");
       setName("");
       setEmail("");
-      setStatus("");
+      setStatus("sent");
       onSent?.();
     } catch {
       setStatus("error");
@@ -30,7 +30,11 @@ export default function FeedbackForm() {
   };
 
   if (status === "sent") {
-    return <p>Thanks for your feedback!</p>;
+    return (
+      <p style={{ padding: 16 }}>
+        Thank you! Your feedback has been submitted successfully.
+      </p>
+    );
   }
 
   return (

@@ -1,175 +1,105 @@
 import { useEffect, useState } from "react";
 import { API_BASE_URL } from "../config";
 
-export default function AdminDashboard({ token }) {
+export default function AdminDashboard({ token, onLogout }) {
   const [documents, setDocuments] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState(null);
-  const [uploadError, setUploadError] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
-
-  const authHeaders = {
-    Authorization: `Bearer ${token}`,
-  };
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const headers = { Authorization: `Bearer ${token}` };
 
   const fetchDocuments = async () => {
-    const res = await fetch(`${API_BASE_URL}/api/admin/documents`, {
-      headers: authHeaders,
-    });
-    if (res.status === 401 || res.status === 403) return;
-    const data = await res.json();
-    setDocuments(data);
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/documents`, { headers });
+      if (res.status === 401 || res.status === 403) return onLogout();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load documents");
+      setDocuments(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => {
-    fetchDocuments();
-  }, []);
+  useEffect(() => { fetchDocuments(); }, []);
 
-  const handleUpload = async (e) => {
-    e.preventDefault();
-    setUploadError("");
-    setUploadResult(null);
-
-    if (!selectedFile) {
-      setUploadError("Select a PDF file first.");
-      return;
-    }
-
+  const handleUpload = async (event) => {
+    event.preventDefault();
+    setMessage("");
+    setError("");
+    if (!selectedFile) return setError("Select a PDF file first.");
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append("pdf", selectedFile);
-
       const res = await fetch(`${API_BASE_URL}/api/admin/upload-pdf`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers,
         body: formData,
       });
-
       const data = await res.json();
-
-      if (!res.ok) {
-        setUploadError(data.error || "Failed to upload PDF");
-        return;
-      }
-
-      setUploadResult(data);
+      if (!res.ok) throw new Error(data.error || "Failed to upload PDF");
+      setMessage(`${data.pdfName}: ${data.chunksCreated} chunks created.`);
       setSelectedFile(null);
-
-      // Clear file input
-      const fileInput = document.getElementById("pdf-file-input");
-      if (fileInput) fileInput.value = "";
-
-      fetchDocuments();
+      document.getElementById("pdf-file-input").value = "";
+      await fetchDocuments();
     } catch (err) {
-      setUploadError(err.message || "Something went wrong");
+      setError(err.message);
     } finally {
       setUploading(false);
     }
   };
 
   const handleDelete = async (name) => {
-    if (!confirm(`Delete "${name}" and all its chunks?`)) return;
-    await fetch(
-      `${API_BASE_URL}/api/admin/documents/${encodeURIComponent(name)}`,
-      {
-        method: "DELETE",
-        headers: authHeaders,
-      },
-    );
+    if (!window.confirm("Are you sure you want to delete this document?")) return;
+    setError("");
+    const res = await fetch(`${API_BASE_URL}/api/admin/documents/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+      headers,
+    });
+    if (res.status === 401 || res.status === 403) return onLogout();
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return setError(data.error || "Failed to delete document");
+    }
     fetchDocuments();
   };
 
   return (
-    <div style={{ maxWidth: 800, margin: "40px auto" }}>
-      <h2>Document Management</h2>
-
-      {/* ---- PDF Upload ---- */}
-      <div
-        style={{
-          border: "1px solid #ccc",
-          borderRadius: 6,
-          padding: 16,
-          marginBottom: 30,
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Upload PDF</h3>
-        <p style={{ fontSize: 13, color: "#555" }}>
-          Upload a PDF document. Its text will be extracted, chunked, and
-          embedded for retrieval. Re-uploading a file with the same name
-          replaces the previous version.
-        </p>
-        <form onSubmit={handleUpload}>
-          <input
-            id="pdf-file-input"
-            type="file"
-            accept=".pdf"
-            onChange={(e) => setSelectedFile(e.target.files[0] || null)}
-            style={{ display: "block", marginBottom: 8 }}
-          />
-          <button type="submit" disabled={uploading}>
-            {uploading ? "Processing..." : "Upload & Process"}
-          </button>
-
-          {uploadError && (
-            <p style={{ color: "red", whiteSpace: "pre-wrap" }}>
-              {uploadError}
-            </p>
-          )}
-
-          {uploadResult && (
-            <div
-              style={{
-                marginTop: 10,
-                fontSize: 13,
-                background: "#f5f5f5",
-                padding: 10,
-                borderRadius: 4,
-              }}
-            >
-              <p>
-                <strong>{uploadResult.pdfName}</strong> —{" "}
-                {uploadResult.chunksCreated} chunks created
-                {uploadResult.previousChunksDeleted > 0 &&
-                  ` (replaced ${uploadResult.previousChunksDeleted} previous chunks)`}
-                {uploadResult.errors > 0 && `, ${uploadResult.errors} failed`}
-              </p>
-            </div>
-          )}
+    <div className="admin-page">
+      <div className="admin-summary">
+        <div><span className="summary-label">Knowledge base</span><strong>{documents.length}</strong><small>Documents available</small></div>
+        <div><span className="summary-label">Total chunks</span><strong>{documents.reduce((sum, doc) => sum + doc.chunks, 0)}</strong><small>Searchable content blocks</small></div>
+      </div>
+      <div className="admin-card upload-card">
+        <div>
+          <span className="card-kicker">CONTENT LIBRARY</span>
+          <h2>Add a knowledge document</h2>
+          <p>Upload a PDF to extract, chunk, and index its content.</p>
+        </div>
+        <form onSubmit={handleUpload} className="upload-form">
+          <label className="file-picker" htmlFor="pdf-file-input">
+            <span>Choose PDF</span>
+            <small>{selectedFile?.name || "PDF files up to 50 MB"}</small>
+          </label>
+          <input id="pdf-file-input" type="file" accept=".pdf,application/pdf" onChange={(e) => setSelectedFile(e.target.files[0] || null)} />
+          <button className="button button-primary" type="submit" disabled={uploading}>{uploading ? "Processing..." : "Upload document"}</button>
         </form>
       </div>
-
-      {/* ---- Uploaded Documents ---- */}
-      <h3>Uploaded Documents</h3>
-      {documents.length === 0 ? (
-        <p style={{ color: "#888" }}>No documents uploaded yet.</p>
-      ) : (
-        <table
-          width="100%"
-          border="1"
-          cellPadding="6"
-          style={{ borderCollapse: "collapse" }}
-        >
-          <thead>
-            <tr>
-              <th>Document</th>
-              <th>Chunks</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {documents.map((doc) => (
-              <tr key={doc.name}>
-                <td>{doc.name}</td>
-                <td>{doc.chunks}</td>
-                <td>
-                  <button onClick={() => handleDelete(doc.name)}>Delete</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      {message && <p className="notice notice-success">{message}</p>}
+      {error && <p className="notice notice-error">{error}</p>}
+      <div className="section-heading"><div><span className="card-kicker">INDEXED CONTENT</span><h2>Documents</h2></div><button className="button button-light" onClick={fetchDocuments}>Refresh</button></div>
+      <div className="admin-card table-card">
+        {loading ? <p className="empty-state">Loading documents...</p> : documents.length === 0 ? <p className="empty-state">No documents uploaded yet.</p> : (
+          <div className="table-scroll"><table className="admin-table"><thead><tr><th>Document</th><th>Chunks</th><th>Actions</th></tr></thead><tbody>
+            {documents.map((doc) => <tr key={doc.name}><td><span className="file-icon">PDF</span><strong>{doc.name}</strong></td><td>{doc.chunks}</td><td><button className="text-button danger" onClick={() => handleDelete(doc.name)}>Delete</button></td></tr>)}
+          </tbody></table></div>
+        )}
+      </div>
     </div>
   );
 }

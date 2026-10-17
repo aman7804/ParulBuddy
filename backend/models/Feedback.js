@@ -2,9 +2,9 @@ const mongoose = require("mongoose");
 
 const feedbackSchema = new mongoose.Schema(
   {
-    message: { type: String, required: true },
+    message: { type: String, required: true, trim: true },
     name: { type: String, default: "" },
-    email: { type: String, default: "" },
+    email: { type: String, default: "", trim: true },
   },
   { timestamps: true },
 );
